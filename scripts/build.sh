@@ -15,10 +15,14 @@ build_flowy() {
 # Function to build with scons
 build_scons() {
   echo "Building with scons..."
+  ## Resolve the NDK buildozer actually downloaded (upstream hardcoded r25b; p4a develop now pulls r28c)
+  NDK_DIR=$(ls -d ~/.buildozer/android/platform/android-ndk-r* 2>/dev/null | sort -V | tail -1)
+  NDK_TOOLCHAIN="$NDK_DIR/toolchains/llvm/prebuilt/linux-x86_64"
+  echo "Using NDK: $NDK_DIR"
   ## libusb
-  ~/.buildozer/android/platform/android-ndk-r25b/ndk-build -C third_party/libusb/android/jni USE_PC_NAME=1
+  "$NDK_DIR/ndk-build" -C third_party/libusb/android/jni USE_PC_NAME=1
   ## libjson11
-  ~/.buildozer/android/platform/android-ndk-r25b/toolchains/llvm/prebuilt/linux-x86_64/bin/aarch64-linux-android30-clang++ -shared third_party/json11/json11.cpp -fPIC -O3 -o third_party/json11/libjson11.so
+  "$NDK_TOOLCHAIN/bin/aarch64-linux-android30-clang++" -shared third_party/json11/json11.cpp -fPIC -O3 -o third_party/json11/libjson11.so
   ## liblmdb
   cd third_party/lmdb
   make

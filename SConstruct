@@ -32,6 +32,15 @@ SHARED = False
 
 home = os.environ['HOME']
 
+# Resolve the NDK buildozer actually downloaded. Upstream hardcoded android-ndk-r25b,
+# but buildozer (p4a develop) now fetches r28c, which made every NDK path below point at
+# a directory that does not exist (ndk-build: No such file, clang++: not found).
+import glob as _glob
+_ndk_candidates = sorted(_glob.glob(f"{home}/.buildozer/android/platform/android-ndk-r*"))
+NDK_DIR = _ndk_candidates[-1] if _ndk_candidates else f"{home}/.buildozer/android/platform/android-ndk-r25b"
+TOOLCHAIN = f"{NDK_DIR}/toolchains/llvm/prebuilt/linux-x86_64"
+print(f"Using NDK: {NDK_DIR}")
+
 lenv = {
   "PATH": os.environ['PATH'] + ":" + Dir(f"#libs/capnpc-java/{arch}/bin").abspath,
   "LD_LIBRARY_PATH": [Dir(f"#third_party/acados/{arch}/lib").abspath],
@@ -68,7 +77,7 @@ else:
   ldflags = []
 
 lenv = {
-  "PATH": f"{home}/.buildozer/android/platform/android-ndk-r25b/toolchains/llvm/prebuilt/linux-x86_64/bin/:{home}/.venv/bin:/bin:/usr/local/bin/", #os.environ['PATH'],
+  "PATH": f"{TOOLCHAIN}/bin/:{home}/.venv/bin:/bin:/usr/local/bin/", #os.environ['PATH'],
   "LD_LIBRARY_PATH": [Dir("#").abspath + "/flowy/.buildozer/android/platform/build-arm64-v8a/build/libs_collections/oscservice/arm64-v8a"],
   "PYTHONPATH": Dir("#").abspath + ':' + Dir(f"#third_party/acados").abspath,
 
@@ -152,8 +161,8 @@ env = Environment(
     "#flowy/.buildozer/android/platform/build-arm64-v8a/build/python-installs/oscservice/arm64-v8a/numpy/core/include/",
   ],
 
-  CC=f'clang --target=aarch64-linux-android24 --sysroot={home}/.buildozer/android/platform/android-ndk-r25b/toolchains/llvm/prebuilt/linux-x86_64/sysroot',
-  CXX=f'clang++ --target=aarch64-linux-android24 --sysroot={home}/.buildozer/android/platform/android-ndk-r25b/toolchains/llvm/prebuilt/linux-x86_64/sysroot',
+  CC=f'clang --target=aarch64-linux-android24 --sysroot={TOOLCHAIN}/sysroot',
+  CXX=f'clang++ --target=aarch64-linux-android24 --sysroot={TOOLCHAIN}/sysroot',
   LINKFLAGS=ldflags,
   AR='llvm-ar',
   RANLIB='llvm-ranlib',

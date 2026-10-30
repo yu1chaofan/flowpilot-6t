@@ -35,6 +35,10 @@ class AcadosRecipe(Recipe):
                     '-DACADOS_WITH_QPOASES=ON',
                     '-UBLASFEO_TARGET',
                     '-DBLASFEO_TARGET=ARMV8A_ARM_CORTEX_A57',
+                    # NDK r28c clang: -std=c99 hides posix_memalign -> implicit decl error in
+                    # blasfeo_stdlib.c; qpOASES 3.1 also trips on older -Werror defaults.
+                    # _POSIX_C_SOURCE=200112L exposes posix_memalign under -std=c99.
+                    '-DCMAKE_C_FLAGS=-D_POSIX_C_SOURCE=200112L',
 
                     '..',
                     _env=env)
