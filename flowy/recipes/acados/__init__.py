@@ -8,6 +8,10 @@ import sh
 class AcadosRecipe(Recipe):
     version = 'v0.2.2'
     url = 'git+https://github.com/acados/acados.git'
+    # NDK r28c clang treats implicit function declarations as errors; qpOASES 3.1embedded
+    # calls malloc() without including <stdlib.h>. MessageHandling.h is pulled in by every
+    # qpOASES source through Utils.h, so one include fixes all 6 malloc sites.
+    patches = ['patches/qpoases_stdlib.patch']
     generated_libraries = [
         'acados/libacados.so',
         'external/blasfeo/libblasfeo.so',
