@@ -1,4 +1,5 @@
 from os.path import dirname, join
+from pythonforandroid.util import ensure_dir
 
 from pythonforandroid.recipe import CythonRecipe, Recipe
 from pythonforandroid.logger import info
@@ -47,33 +48,39 @@ class PycapnpRecipe(CythonRecipe):
     # These args are appended verbatim by recipe.py:1194.
     cython_args = ['-3', '--cplus', '-I', '.']
 
-    def build_arch(self, arch):
-        """Make sure the host python has setuptools/cython before we need them.
+    def _ensure_host_deps(self, arch):
+        """Install setuptools/cython into the host python's site-packages.
 
-        p4a v2024.01.21's CythonRecipe.build_arch() does NOT install
-        hostpython_prerequisites -- that hook only exists on newer p4a. So the
-        first `setup.py build_ext` runs against a host python with no
-        setuptools and dies with:
+        The p4a host python is configured with --without-ensurepip (visible in
+        the log's configure line), so `hostpython -m pip` can never work:
 
-            setup.py:15  from setuptools import setup, Extension
-            ModuleNotFoundError: No module named 'setuptools'
+            hostpython3/native-build/python3: No module named pip
 
-        The pinned release does provide `hostpython_location`, so we invoke
-        it directly and install what setup.py imports. Calling the interpreter
-        with -m pip (rather than a pip shim) works on any host python that has
-        pip, which buildozer's bundled one does.
+        Bootstrap through the *building* interpreter instead (the one running
+        buildozer, which always has pip) with --target pointing at the host
+        python's site-packages. That sidesteps the missing pip entirely and is
+        the same trick p4a itself uses when it bootstraps setuptools.
         """
+        import sys
         import sh
         from pythonforandroid.toolchain import shprint
 
+        # <native-build>/python3 -> site-packages lives next to the binary
+        host_site = join(dirname(self.hostpython_location), 'Lib', 'site-packages')
+        ensure_dir(host_site)
+
         env = self.get_recipe_env(arch)
-        python = self.hostpython_location
         env.pop('PYTHONPATH', None)
-        # --upgrade keeps cython pinned even if a newer one leaked in earlier,
-        # and Cython 3 would emit CPython private symbols we cannot satisfy.
-        shprint(sh.Command(python), '-m', 'pip', 'install', '-q', '--upgrade',
-                '--disable-pip-version-check',
+        # Cython must stay at 0.29.x: Cython 3 emits CPython private symbols
+        # (_PyDict_SetItem_KnownHash, _PyInterpreterState_GetConfig) that p4a's
+        # headers do not expose.
+        shprint(sh.Command(sys.executable), '-m', 'pip', 'install', '-q',
+                '--disable-pip-version-check', '--upgrade',
+                '--target', host_site,
                 'setuptools', 'wheel', 'cython==0.29.37', _env=env)
+
+    def build_arch(self, arch):
+        self._ensure_host_deps(arch)
         super().build_arch(arch)
 
     def cythonize_build(self, env, build_dir="."):
