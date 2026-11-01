@@ -7,9 +7,24 @@ build_flowy() {
   echo "Building flowy..."
   cd flowy
   CI=1 buildozer android debug
+  rc=$?
   cd -
+  if [ $rc -ne 0 ]; then
+    echo "!!! buildozer failed with rc=$rc"
+    echo "!!! last 120 lines of the python-for-android build log:"
+    find flowy/.buildozer/android/platform -name "*.log" -o -type d -name "*build*" 2>/dev/null | head -5
+    exit $rc
+  fi
 
-  cp flowy/bin/openpilot-0.1-arm64-v8a-debug.aar android/libs
+  # The AAR name is produced by p4a from the dist name; do not assume it.
+  AAR=$(ls -1 flowy/bin/*.aar 2>/dev/null | head -1)
+  if [ -z "$AAR" ]; then
+    echo "!!! buildozer reported success but produced no .aar in flowy/bin/"
+    ls -la flowy/bin/ 2>/dev/null || true
+    exit 1
+  fi
+  echo "using AAR: $AAR"
+  cp "$AAR" android/libs/openpilot-0.1-arm64-v8a-debug.aar
 }
 
 # Function to build with scons
