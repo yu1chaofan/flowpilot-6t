@@ -62,17 +62,18 @@ class AcadosRecipe(Recipe):
         from pythonforandroid.util import current_directory
         from pythonforandroid.logger import info
 
-        if self.is_downloaded():
-            return
-
         super().download_if_necessary()
 
+        # download() has just run `git fetch --depth 1 origin v0.2.2`, which
+        # puts the commit in FETCH_HEAD but not the tag object. p4a then tries
+        # `git checkout v0.2.2` later and fails with "pathspec did not match".
+        # Detach onto FETCH_HEAD now, while we are still in the same repo.
         build_dir = self.get_build_container_dir(None)
         target = join(build_dir, self.name)
         if exists(join(target, '.git')):
             with current_directory(target):
-                info("acados: checking out FETCH_HEAD (shallow tag fetch)")
-                sh.git.checkout('FETCH_HEAD')
+                info("acados: detaching onto FETCH_HEAD (shallow tag fetch)")
+                sh.git.checkout('--force', 'FETCH_HEAD')
 
 
 recipe = AcadosRecipe()
