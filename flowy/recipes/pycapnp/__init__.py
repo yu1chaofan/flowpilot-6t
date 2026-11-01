@@ -124,7 +124,14 @@ class PycapnpRecipe(CythonRecipe):
         # Force-include a shim that maps it onto the public PyDict_SetItem().
         shim = join(dirname(__file__), 'cython_compat.h')
         env['CXXFLAGS'] += ' -include {}'.format(shim)
+        # pycapnp compiles capnp/helpers/capabilityHelper.cpp through distutils'
+        # plain `clang` (not clang++), and that path only inherits CFLAGS. It
+        # therefore needs the capnp include dir too, otherwise:
+        #   ./capnp/helpers/capabilityHelper.h:3:10:
+        #     fatal error: 'capnp/dynamic.h' file not found
+        # CXXFLAGS alone does not reach it.
         env['CFLAGS'] += ' -include {}'.format(shim)
+        env['CFLAGS'] += ' -I{}/c++/src/'.format(capnp_dir)
         return env
 
 
