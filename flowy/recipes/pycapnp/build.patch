@@ -1,30 +1,29 @@
---- a/setup.py
-+++ b/setup.py
-@@ -9,8 +9,6 @@ import shutil
+--- orig/setup.py	2026-11-01 11:44:13.876854143 +0800
++++ new/setup.py	2026-11-01 12:03:06.678451208 +0800
+@@ -9,7 +9,6 @@
  import struct
  import sys
-
+ 
 -import pkgconfig
--
+ 
  from distutils.command.clean import clean as _clean
-
- from setuptools import setup, Extension
-@@ -104,7 +102,7 @@ class build_libcapnp_ext(build_ext_c):
-     def initialize_options(self):
-         build_ext_c.initialize_options(self)
-         self.force_bundled_libcapnp = None
--        self.force_system_libcapnp = None
-+        self.force_system_libcapnp = True
-         self.libcapnp_url = None
-
-     def finalize_options(self):
-@@ -132,16 +130,6 @@ class build_libcapnp_ext(build_ext_c):
-                 ]
-                 self.library_dirs += [os.path.join(capnp_dir, "..", "lib")]
-
+ 
+@@ -117,7 +116,7 @@
+     def run(self):
+         if force_bundled_libcapnp:
+             need_build = True
+-        elif force_system_libcapnp:
++        elif force_system_libcapnp or True:  # p4a ships libcapnp as the 'capnp' recipe
+             need_build = False
+         else:
+             # Try to use capnp executable to find include and lib path
+@@ -127,16 +126,6 @@
+                 self.library_dirs += [os.path.join(os.path.dirname(capnp_executable), '..', 'lib{}'.format(8 * struct.calcsize("P")))]
+                 self.library_dirs += [os.path.join(os.path.dirname(capnp_executable), '..', 'lib')]
+ 
 -            # Look for capnproto using pkg-config (and minimum version)
 -            try:
--                if pkgconfig.installed("capnp", ">= 0.7.0"):
+-                if pkgconfig.installed('capnp', '>= 0.8.0'):
 -                    need_build = False
 -                else:
 -                    need_build = True
