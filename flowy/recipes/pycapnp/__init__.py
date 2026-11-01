@@ -1,6 +1,7 @@
 from os.path import join
 
 from pythonforandroid.recipe import CythonRecipe, Recipe
+from pythonforandroid.logger import info
 
 
 class PycapnpRecipe(CythonRecipe):
@@ -45,6 +46,24 @@ class PycapnpRecipe(CythonRecipe):
     #   capnp/lib/capnp.pyx:3924:17: Operation only allowed in c++
     # These args are appended verbatim by recipe.py:1194.
     cython_args = ['-3', '--cplus', '-I', '.']
+
+    def cythonize_build(self, env, build_dir="."):
+        """Cythonize only the real .pyx files.
+
+        p4a's default walks the tree with fnmatch("*.pyx"), which also picks up
+        capnp/templates/module.pyx. That file is a Jinja2 template, not Cython
+        source, so cython fails on it:
+
+            capnp/templates/module.pyx:10:1: Expected an identifier or literal
+            {% macro getter(field, type) -%}
+
+        pycapnp's own setup.py templates it into capnp/lib/capnp.pyx at build
+        time, so we only translate that generated file (plus the standalone
+        benchmark helper, which is harmless but skip-worthy).
+        """
+        from os.path import join
+        info("Cythonizing capnp/lib/capnp.pyx only (skipping Jinja2 templates)")
+        self.cythonize_file(env, build_dir, join(build_dir, "capnp/lib/capnp.pyx"))
 
     def get_recipe_env(self, arch, **kwargs):
         env = super().get_recipe_env(arch)
