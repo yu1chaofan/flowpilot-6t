@@ -82,10 +82,19 @@ class PycapnpRecipe(CythonRecipe):
         # Installing setuptools into the shared host site-packages therefore
         # breaks *other* recipes, not just this one. 69.x still provides the
         # attribute while supporting pyproject-only projects.
+        # --ignore-installed is required: with --target + --upgrade pip will
+        # happily leave an existing newer setuptools in place (it only adds what
+        # is missing), which is how a fresh setuptools kept breaking numpy's
+        # distutils even after this pin.
         shprint(sh.Command(sys.executable), '-m', 'pip', 'install', '-q',
                 '--disable-pip-version-check', '--upgrade',
+                '--ignore-installed',
                 '--target', host_site,
                 'setuptools<70', 'wheel', 'cython==0.29.37', _env=env)
+        # PIP_TARGET puts things in host_site; make sure the host python actually
+        # sees them before numpy/pycapnp run.
+        env['PYTHONPATH'] = host_site
+        info("host site-packages prepared at {}".format(host_site))
 
     def build_arch(self, arch):
         self._ensure_host_deps(arch)
