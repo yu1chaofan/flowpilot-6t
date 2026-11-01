@@ -1,0 +1,196 @@
+name: Build APK (staged)
+
+# Staged build so a failure costs ~3 minutes instead of ~15.
+#
+# Background: the full pipeline is docker build (10 min) -> buildozer/NDK
+# (10 min) -> gradle (1 min). While iterating on the python-for-android
+# recipes, every single failure forced a full re-run and we only got one
+# error message per round. Splitting into independent jobs (with cache)
+# lets us retry only the stage that broke.
+#
+# Jobs:
+#   flowy   - buildozer android debug -> openpilot-*.aar  (the fragile one)
+#   native  - scons + NDK deps       -> android/libs/arm64-v8a/*.so
+#   apk     - gradle assembleRelease -> *.apk
+#
+# `flowy` and `native` are independent and run in parallel; `apk` needs both.
+# Every job uploads its own small log artifact so a failure is diagnosable
+# without the 8 MB job-log stream (which is unreliable over this network).
+
+on:
+  workflow_dispatch:
+  push:
+    branches: [master]
+    paths-ignore:
+      - '**.md'
+
+jobs:
+  flowy:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 120
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          submodules: true
+
+      - name: Cache buildozer
+        uses: actions/cache@v4
+        with:
+          path: |
+            cache/buildozer
+            cache/gradle
+          key: bz-${{ runner.os }}-${{ hashFiles('flowy/recipes/**', 'flowy/buildozer.spec', 'scripts/build.sh', 'docker/**') }}
+          restore-keys: bz-${{ runner.os }}-
+
+      - name: Docker build
+        run: |
+          mkdir -p cache/buildozer cache/gradle
+          ./build_env.sh 2>&1 | tee /tmp/build_env.log | tail -20
+
+      - name: buildozer android debug
+        run: |
+          set -o pipefail
+          ./build.sh flowy 2>&1 | tee /tmp/flowy.log | tail -60
+
+      - name: Collect p4a logs
+        if: always()
+        run: |
+          mkdir -p /tmp/p4a
+          find flowy -name "*.log" -size -20M -exec cp {} /tmp/p4a/ \; 2>/dev/null || true
+          ls -la /tmp/p4a 2>/dev/null | head
+          ls -la flowy/bin 2>/dev/null || true
+
+      - name: Upload logs
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: logs-flwy-${{ github.run_number }}
+          path: |
+            /tmp/flowy.log
+            /tmp/p4a
+          if-no-files-found: warn
+          retention-days: 14
+
+      - name: Upload aar
+        if: success()
+        uses: actions/upload-artifact@v4
+        with:
+          name: aar-${{ github.run_number }}
+          path: |
+            flowy/bin/*.aar
+          if-no-files-found: error
+          retention-days: 14
+
+  native:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 90
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          submodules: true
+
+      - name: Cache buildozer (for the NDK it downloads)
+        uses: actions/cache@v4
+        with:
+          path: |
+            cache/buildozer
+          key: bz-native-${{ runner.os }}-${{ hashFiles('scripts/build.sh', 'docker/**') }}
+          restore-keys: bz-native-${{ runner.os }}-
+
+      - name: Docker build
+        run: |
+          mkdir -p cache/buildozer cache/gradle
+          ./build_env.sh 2>&1 | tail -5
+
+      - name: scons + native deps
+        run: |
+          set -o pipefail
+          ./build.sh scons 2>&1 | tee /tmp/scons.log | tail -60
+
+      - name: Upload logs
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: logs-scons-${{ github.run_number }}
+          path: /tmp/scons.log
+          if-no-files-found: warn
+          retention-days: 14
+
+      - name: Upload native libs
+        if: success()
+        uses: actions/upload-artifact@v4
+        with:
+          name: native-${{ github.run_number }}
+          path: android/libs
+          if-no-files-found: error
+          retention-days: 14
+
+  apk:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 60
+    needs: [flowy, native]
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          submodules: true
+
+      - name: Cache buildozer
+        uses: actions/cache@v4
+        with:
+          path: |
+            cache/buildozer
+            cache/gradle
+          key: bz-${{ runner.os }}-${{ hashFiles('flowy/recipes/**', 'flowy/buildozer.spec', 'scripts/build.sh', 'docker/**') }}
+          restore-keys: bz-${{ runner.os }}-
+
+      - name: Download aar
+        uses: actions/download-artifact@v4
+        with:
+          name: aar-${{ github.run_number }}
+          path: flowy/bin
+
+      - name: Download native libs
+        uses: actions/download-artifact@v4
+        with:
+          name: native-${{ github.run_number }}
+          path: android/libs
+
+      - name: Show what we got
+        run: |
+          ls -la flowy/bin || true
+          ls -la android/libs || true
+          ls -la android/libs/arm64-v8a 2>/dev/null | head -20 || true
+
+      - name: Docker build
+        run: |
+          mkdir -p cache/buildozer cache/gradle
+          ./build_env.sh 2>&1 | tail -5
+
+      - name: gradle assembleRelease
+        run: |
+          set -o pipefail
+          ./build.sh app 2>&1 | tee /tmp/app.log | tail -60
+
+      - name: Locate APK
+        if: always()
+        run: |
+          find . -name "*.apk" -type f -printf "%p  %s bytes\n" 2>/dev/null || true
+
+      - name: Upload APK
+        if: success()
+        uses: actions/upload-artifact@v4
+        with:
+          name: apk-${{ github.run_number }}
+          path: |
+            **/*.apk
+          if-no-files-found: error
+          retention-days: 14
+
+      - name: Upload logs
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: logs-app-${{ github.run_number }}
+          path: /tmp/app.log
+          if-no-files-found: warn
+          retention-days: 14
