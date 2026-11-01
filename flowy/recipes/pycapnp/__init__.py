@@ -66,7 +66,7 @@ class PycapnpRecipe(CythonRecipe):
 
         # self._host_recipe is resolved by Recipe.__init__ (recipe.py:1021 uses
         # the same handle); it is what install_hostpython_prerequisites() uses.
-        env = self.get_hostrecipe_env()
+        env = self.get_hostrecipe_env(arch)
         env.pop('PYTHONPATH', None)
         # --upgrade keeps cython pinned even if a newer one leaked in earlier.
         shprint(self._host_recipe.pip, 'install', '-q', '--upgrade',
