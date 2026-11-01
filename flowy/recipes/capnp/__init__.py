@@ -6,7 +6,12 @@ import sh
 
 
 class CapnpRecipe(Recipe):
-    version = 'c7f810a76ca88ff28613fa165927e0269255aab0'  # v1.0.1
+    # v1.0.1 lacks CallContext::allowCancellation(), which both pycapnp
+    # v1.0.0 and v1.1.0 call in their .pyx:
+    #   error: no member named 'allowCancellation' in
+    #     'capnp::CallContext<capnp::DynamicStruct, capnp::DynamicStruct>'
+    # Match pycapnp v1.1.0 with the capnproto release it was written against.
+    version = 'b34ec28cceaf15b1082b74b50f03f770873c3636'  # v1.1.0
     url = 'git+https://github.com/capnproto/capnproto.git'
     patches = ['path.patch']
 
