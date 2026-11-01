@@ -49,31 +49,30 @@ class PycapnpRecipe(CythonRecipe):
     cython_args = ['-3', '--cplus', '-I', '.']
 
     def _ensure_host_deps(self, arch):
-        """Make setuptools & cython importable *without touching host site-packages*.
+        """Make sure the host python has setuptools/wheel/cython for setup.py.
 
-        Two constraints pulled against each other here, and both were learned
-        from failed runs:
+        Constraints learned from failed runs:
 
-        * pycapnp's setup.py imports setuptools, but the p4a host python is
-          built --without-ensurepip so it has no pip and (in a fresh cache) no
-          setuptools. It must come from somewhere.
-        * numpy's bundled numpy.distutils calls compiler.cxx_compiler(), which
-          modern setuptools' distutils no longer provides:
+        * The p4a host python is configured --without-ensurepip, so it has no
+          pip: `hostpython -m pip` fails with "No module named pip". Bootstrap
+          through the building interpreter (which has pip) with --target.
+        * --target + --upgrade alone does NOT replace an existing newer
+          setuptools, so --ignore-installed is required.
+        * numpy 1.22.3's bundled numpy.distutils calls
+          compiler.cxx_compiler(), which newer setuptools removed:
               AttributeError: 'UnixCCompiler' object has no attribute 'cxx_compiler'
-          Installing a newer setuptools into the *shared* host site-packages
-          therefore breaks numpy, no matter how pycapnp pins it -- numpy is
-          built by its own recipe afterwards and sees the same directory.
-
-        So install into a private directory for this recipe and prepend it on
-        PYTHONPATH instead. numpy keeps whatever setuptools it had; pycapnp sees
-        69.x (which still has cxx_compiler) plus the pinned Cython 0.29.
+          numpy is built by its own recipe against the same site-packages, so
+          the version we write here must also satisfy numpy -> setuptools<70.
+        * A recipe-private dir instead (tried first) leaked into every later
+          recipe's environment via PYTHONPATH and hid packages they need
+          (pyzmq lost `packaging`). One shared location is simpler and correct.
         """
         import sys
         import sh
         from pythonforandroid.toolchain import shprint
 
-        private = join(dirname(self.hostpython_location), 'Lib', 'pycapnp-site')
-        ensure_dir(private)
+        host_site = join(dirname(self.hostpython_location), 'Lib', 'site-packages')
+        ensure_dir(host_site)
 
         env = self.get_recipe_env(arch)
         env.pop('PYTHONPATH', None)
@@ -82,15 +81,9 @@ class PycapnpRecipe(CythonRecipe):
         # headers do not expose.
         shprint(sh.Command(sys.executable), '-m', 'pip', 'install', '-q',
                 '--disable-pip-version-check', '--upgrade', '--ignore-installed',
-                '--target', private,
-                # packaging is imported by later recipes' setup.py
-                # (e.g. pyzmq: `from packaging.version import Version`), and
-                # because this dir shadows site-packages they would lose it.
-                'setuptools<70', 'wheel', 'cython==0.29.37', 'packaging', _env=env)
-
-        # Private dir first, host site-packages second.
-        self._private_site = private
-        info("pycapnp private deps at {}".format(private))
+                '--target', host_site,
+                'setuptools<70', 'wheel', 'packaging', 'cython==0.29.37', _env=env)
+        info("host deps prepared in {}".format(host_site))
 
     def build_arch(self, arch):
         self._ensure_host_deps(arch)
@@ -117,12 +110,6 @@ class PycapnpRecipe(CythonRecipe):
     def get_recipe_env(self, arch, **kwargs):
         env = super().get_recipe_env(arch)
         capnp_dir = Recipe.get_recipe("capnp", self.ctx).get_build_dir(arch.arch)
-        # Put this recipe's private deps ahead of the shared site-packages so
-        # setup.py sees setuptools<70 + Cython 0.29 (see _ensure_host_deps).
-        private = getattr(self, '_private_site', None)
-        if private:
-            prev = env.get('PYTHONPATH', '')
-            env['PYTHONPATH'] = private + ((':' + prev) if prev else '')
         env['CXXFLAGS'] += ' -I{}/c++/src/'.format(capnp_dir)
         env['CXXFLAGS'] += ' -L{}/c++/.libs/'.format(capnp_dir)
         # Cython's SetNameInClass utility calls _PyDict_SetItem_KnownHash on
