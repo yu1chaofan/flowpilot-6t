@@ -42,9 +42,23 @@ class CapnpRecipe(Recipe):
                 _env=env)
             shprint(sh.make, _env=env)
             with current_directory(join(curdir, '.libs')):
-                for lib in sh.glob("lib*-1.0.1.so"):
-                    shprint(sh.ln, '-sf', lib, lib.replace('-1.0.1', ''))
-                    shprint(sh.cp, '-a', lib, lib.replace('-1.0.1', ''), self.ctx.get_libs_dir(arch.arch))
+                # The version in the .so name tracks the capnproto release and
+                # changes with every bump. Globbing any lib*-<ver>.so keeps this
+                # working when `version` moves, instead of silently shipping no
+                # libraries (which is what happened when we went from v1.0.1 to
+                # v1.1.0 while this glob still said 1.0.1 -- pycapnp then failed
+                # with "no member named 'allowCancellation'", because it was
+                # compiling against nothing at all).
+                libs = sh.glob("lib*.so.*")
+                if not libs:
+                    raise RuntimeError(
+                        "capnp: no built libraries found in {}/.libs".format(curdir))
+                for lib in libs:
+                    shprint(sh.cp, '-a', lib, self.ctx.get_libs_dir(arch.arch))
+                    # Also copy the unversioned symlink target name, so p4a's
+                    # biglink step can resolve -lcapnp / -lkj.
+                    base = lib.split('.so.')[0] + '.so'
+                    shprint(sh.cp, '-a', lib, base, self.ctx.get_libs_dir(arch.arch))
 
 
 recipe = CapnpRecipe()
