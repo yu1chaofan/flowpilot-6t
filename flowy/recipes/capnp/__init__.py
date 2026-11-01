@@ -48,29 +48,39 @@ class CapnpRecipe(Recipe):
             shprint(sh.make, _env=env)
             # Copy the freshly linked shared objects out of .libs.
             #
-            # Two traps here, both observed:
+            # Three traps here, each observed in a CI round:
             #  1. The version in the .so name tracks the capnproto release, so a
-            #     hardcoded 'lib*-1.0.1.so' glob silently matches nothing after
-            #     a version bump (pycapnp then compiles against stale headers and
-            #     fails with "no member named 'allowCancellation'").
-            #  2. `sh.glob()` resolves relative to the *process* cwd, not the
-            #     current_directory() context manager. Globbing "lib*.so.*"
-            #     inside current_directory('.libs') therefore looked in the wrong
-            #     place and reported "no built libraries" even though libtool had
-            #     just linked libkj.so/libcapnp.so there.
-            # Use an absolute pattern and skip the symlinks libtool leaves around.
+            #     hardcoded 'lib*-1.0.1.so' glob silently matches nothing after a
+            #     version bump; pycapnp then compiles against stale headers and
+            #     fails with "no member named 'allowCancellation'".
+            #  2. autoconf needs --enable-shared, otherwise only .a files exist.
+            #  3. sh.glob() proved unreliable here -- it returned nothing even
+            #     with an absolute pattern, while libtool had demonstrably
+            #     linked libkj.so/libcapnp.so into that very directory. Use the
+            #     stdlib instead; it has no cwd/ quoting surprises.
+            import os as _os
+
             libs_dir = join(curdir, '.libs')
-            candidates = sorted(sh.glob(join(libs_dir, 'lib*.so.*')))
-            real = [p for p in candidates if not sh.test('-L', p)]
+            if not _os.path.isdir(libs_dir):
+                raise RuntimeError("capnp: {} does not exist".format(libs_dir))
+            real = []
+            for entry in sorted(_os.listdir(libs_dir)):
+                path = join(libs_dir, entry)
+                # Real versioned shared object: libkj.so.1.0.2, libcapnp.so.1.1.0
+                if not entry.startswith('lib') or '.so.' not in entry:
+                    continue
+                if _os.path.islink(path):
+                    continue
+                real.append(path)
             if not real:
                 raise RuntimeError(
-                    "capnp: no built libraries found in {}".format(libs_dir))
+                    "capnp: no built libraries in {} (contents: {})".format(
+                        libs_dir, sorted(_os.listdir(libs_dir))[:20]))
             for lib in real:
                 shprint(sh.cp, '-a', lib, self.ctx.get_libs_dir(arch.arch))
-                # Also publish the unversioned name so biglink can resolve
+                # Publish the unversioned name so biglink resolves
                 # -lcapnp / -lkj / -lkj-async.
                 base = lib.split('.so.')[0] + '.so'
                 shprint(sh.cp, '-a', lib, base, self.ctx.get_libs_dir(arch.arch))
-
 
 recipe = CapnpRecipe()
