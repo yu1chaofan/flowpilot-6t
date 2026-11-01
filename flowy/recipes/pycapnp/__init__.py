@@ -48,28 +48,31 @@ class PycapnpRecipe(CythonRecipe):
     cython_args = ['-3', '--cplus', '-I', '.']
 
     def build_arch(self, arch):
-        """Install host prerequisites before touching the .pyx files.
+        """Make sure the host python has setuptools/cython before we need them.
 
-        CythonRecipe.build_arch() does call install_hostpython_prerequisites(),
-        but in the container that step silently no-ops: the log shows the
-        `pip install setuptools cython==0.29.37` line for *other* recipes and
-        none here, and the very next step dies with
+        p4a v2024.01.21's CythonRecipe.build_arch() does NOT install
+        hostpython_prerequisites -- that hook only exists on newer p4a. So the
+        first `setup.py build_ext` runs against a host python with no
+        setuptools and dies with:
 
-            File "setup.py", line 15, in <module>
-              from setuptools import setup, Extension
+            setup.py:15  from setuptools import setup, Extension
             ModuleNotFoundError: No module named 'setuptools'
 
-        Installing them explicitly through the same hostpython pip makes the
-        dependency ordering unconditional instead of relying on recipe state.
+        The pinned release does provide `hostpython_location`, so we invoke
+        it directly and install what setup.py imports. Calling the interpreter
+        with -m pip (rather than a pip shim) works on any host python that has
+        pip, which buildozer's bundled one does.
         """
+        import sh
         from pythonforandroid.toolchain import shprint
 
-        # self._host_recipe is resolved by Recipe.__init__ (recipe.py:1021 uses
-        # the same handle); it is what install_hostpython_prerequisites() uses.
-        env = self.get_hostrecipe_env(arch)
+        env = self.get_recipe_env(arch)
+        python = self.hostpython_location
         env.pop('PYTHONPATH', None)
-        # --upgrade keeps cython pinned even if a newer one leaked in earlier.
-        shprint(self._host_recipe.pip, 'install', '-q', '--upgrade',
+        # --upgrade keeps cython pinned even if a newer one leaked in earlier,
+        # and Cython 3 would emit CPython private symbols we cannot satisfy.
+        shprint(sh.Command(python), '-m', 'pip', 'install', '-q', '--upgrade',
+                '--disable-pip-version-check',
                 'setuptools', 'wheel', 'cython==0.29.37', _env=env)
         super().build_arch(arch)
 
