@@ -83,7 +83,10 @@ class PycapnpRecipe(CythonRecipe):
         shprint(sh.Command(sys.executable), '-m', 'pip', 'install', '-q',
                 '--disable-pip-version-check', '--upgrade', '--ignore-installed',
                 '--target', private,
-                'setuptools<70', 'wheel', 'cython==0.29.37', _env=env)
+                # packaging is imported by later recipes' setup.py
+                # (e.g. pyzmq: `from packaging.version import Version`), and
+                # because this dir shadows site-packages they would lose it.
+                'setuptools<70', 'wheel', 'cython==0.29.37', 'packaging', _env=env)
 
         # Private dir first, host site-packages second.
         self._private_site = private
