@@ -49,52 +49,45 @@ class PycapnpRecipe(CythonRecipe):
     cython_args = ['-3', '--cplus', '-I', '.']
 
     def _ensure_host_deps(self, arch):
-        """Install setuptools/cython into the host python's site-packages.
+        """Make setuptools & cython importable *without touching host site-packages*.
 
-        The p4a host python is configured with --without-ensurepip (visible in
-        the log's configure line), so `hostpython -m pip` can never work:
+        Two constraints pulled against each other here, and both were learned
+        from failed runs:
 
-            hostpython3/native-build/python3: No module named pip
+        * pycapnp's setup.py imports setuptools, but the p4a host python is
+          built --without-ensurepip so it has no pip and (in a fresh cache) no
+          setuptools. It must come from somewhere.
+        * numpy's bundled numpy.distutils calls compiler.cxx_compiler(), which
+          modern setuptools' distutils no longer provides:
+              AttributeError: 'UnixCCompiler' object has no attribute 'cxx_compiler'
+          Installing a newer setuptools into the *shared* host site-packages
+          therefore breaks numpy, no matter how pycapnp pins it -- numpy is
+          built by its own recipe afterwards and sees the same directory.
 
-        Bootstrap through the *building* interpreter instead (the one running
-        buildozer, which always has pip) with --target pointing at the host
-        python's site-packages. That sidesteps the missing pip entirely and is
-        the same trick p4a itself uses when it bootstraps setuptools.
+        So install into a private directory for this recipe and prepend it on
+        PYTHONPATH instead. numpy keeps whatever setuptools it had; pycapnp sees
+        69.x (which still has cxx_compiler) plus the pinned Cython 0.29.
         """
         import sys
         import sh
         from pythonforandroid.toolchain import shprint
 
-        # <native-build>/python3 -> site-packages lives next to the binary
-        host_site = join(dirname(self.hostpython_location), 'Lib', 'site-packages')
-        ensure_dir(host_site)
+        private = join(dirname(self.hostpython_location), 'Lib', 'pycapnp-site')
+        ensure_dir(private)
 
         env = self.get_recipe_env(arch)
         env.pop('PYTHONPATH', None)
-        # Cython must stay at 0.29.x: Cython 3 emits CPython private symbols
+        # Cython must stay 0.29.x: Cython 3 emits CPython private symbols
         # (_PyDict_SetItem_KnownHash, _PyInterpreterState_GetConfig) that p4a's
         # headers do not expose.
-        # setuptools is pinned below 70 on purpose: numpy's bundled
-        # numpy.distutils calls `compiler.cxx_compiler()`, and newer setuptools
-        # distutils no longer exposes it:
-        #   numpy/core/setup.py:702  bk_c.cxx_compiler()
-        #   AttributeError: 'Compiler' object has no attribute 'cxx_compiler'
-        # Installing setuptools into the shared host site-packages therefore
-        # breaks *other* recipes, not just this one. 69.x still provides the
-        # attribute while supporting pyproject-only projects.
-        # --ignore-installed is required: with --target + --upgrade pip will
-        # happily leave an existing newer setuptools in place (it only adds what
-        # is missing), which is how a fresh setuptools kept breaking numpy's
-        # distutils even after this pin.
         shprint(sh.Command(sys.executable), '-m', 'pip', 'install', '-q',
-                '--disable-pip-version-check', '--upgrade',
-                '--ignore-installed',
-                '--target', host_site,
+                '--disable-pip-version-check', '--upgrade', '--ignore-installed',
+                '--target', private,
                 'setuptools<70', 'wheel', 'cython==0.29.37', _env=env)
-        # PIP_TARGET puts things in host_site; make sure the host python actually
-        # sees them before numpy/pycapnp run.
-        env['PYTHONPATH'] = host_site
-        info("host site-packages prepared at {}".format(host_site))
+
+        # Private dir first, host site-packages second.
+        self._private_site = private
+        info("pycapnp private deps at {}".format(private))
 
     def build_arch(self, arch):
         self._ensure_host_deps(arch)
@@ -121,6 +114,12 @@ class PycapnpRecipe(CythonRecipe):
     def get_recipe_env(self, arch, **kwargs):
         env = super().get_recipe_env(arch)
         capnp_dir = Recipe.get_recipe("capnp", self.ctx).get_build_dir(arch.arch)
+        # Put this recipe's private deps ahead of the shared site-packages so
+        # setup.py sees setuptools<70 + Cython 0.29 (see _ensure_host_deps).
+        private = getattr(self, '_private_site', None)
+        if private:
+            prev = env.get('PYTHONPATH', '')
+            env['PYTHONPATH'] = private + ((':' + prev) if prev else '')
         env['CXXFLAGS'] += ' -I{}/c++/src/'.format(capnp_dir)
         env['CXXFLAGS'] += ' -L{}/c++/.libs/'.format(capnp_dir)
         # Cython's SetNameInClass utility calls _PyDict_SetItem_KnownHash on
