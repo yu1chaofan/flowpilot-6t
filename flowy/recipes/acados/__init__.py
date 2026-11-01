@@ -46,4 +46,33 @@ class AcadosRecipe(Recipe):
             
             sh.cp('-a', *self.generated_libraries, self.ctx.get_libs_dir(arch.arch))
 
+    def download_if_necessary(self):
+        """Fetch the pinned tag without tripping over shallow-clone checkout.
+
+        p4a's Recipe.fetch() does `git fetch --depth 1 origin <version>` and
+        then `git checkout <version>`. With --depth 1 the tag object itself is
+        not brought down, only FETCH_HEAD, so checkout fails with:
+
+            error: pathspec 'v0.2.2' did not match any file(s) known to git
+
+        Detaching onto FETCH_HEAD is equivalent (that IS the tag's commit) and
+        works regardless of clone depth.
+        """
+        import sh
+        from pythonforandroid.util import current_directory
+        from pythonforandroid.logger import info
+
+        if self.is_downloaded():
+            return
+
+        super().download_if_necessary()
+
+        build_dir = self.get_build_container_dir(None)
+        target = join(build_dir, self.name)
+        if exists(join(target, '.git')):
+            with current_directory(target):
+                info("acados: checking out FETCH_HEAD (shallow tag fetch)")
+                sh.git.checkout('FETCH_HEAD')
+
+
 recipe = AcadosRecipe()
