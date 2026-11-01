@@ -66,8 +66,12 @@ class CapnpRecipe(Recipe):
             real = []
             for entry in sorted(_os.listdir(libs_dir)):
                 path = join(libs_dir, entry)
-                # Real versioned shared object: libkj.so.1.0.2, libcapnp.so.1.1.0
-                if not entry.startswith('lib') or '.so.' not in entry:
+                # Capnproto names its shared objects with a dash, not a dot:
+                #     libcapnp-1.1.0.so, libkj-async-1.1.0.so
+                # (not libcapnp.so.1.1.0). Only the .so suffix carries meaning
+                # here; anything else in this dir is .la/.lai libtool metadata
+                # or the capnpc executables.
+                if not entry.startswith('lib') or not entry.endswith('.so'):
                     continue
                 if _os.path.islink(path):
                     continue
@@ -77,10 +81,14 @@ class CapnpRecipe(Recipe):
                     "capnp: no built libraries in {} (contents: {})".format(
                         libs_dir, sorted(_os.listdir(libs_dir))[:20]))
             for lib in real:
+                name = _os.path.basename(lib)
                 shprint(sh.cp, '-a', lib, self.ctx.get_libs_dir(arch.arch))
-                # Publish the unversioned name so biglink resolves
-                # -lcapnp / -lkj / -lkj-async.
-                base = lib.split('.so.')[0] + '.so'
-                shprint(sh.cp, '-a', lib, base, self.ctx.get_libs_dir(arch.arch))
+                # Publish the unversioned name so biglink can resolve
+                # -lcapnp / -lkj / -lkj-async: strip the -<version> part.
+                stem, _, _ = name.rpartition('-')
+                if not stem:
+                    stem = name[:-3]
+                shprint(sh.cp, '-a', lib, join(self.ctx.get_libs_dir(arch.arch),
+                                               stem + '.so'))
 
 recipe = CapnpRecipe()
