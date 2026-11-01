@@ -164,7 +164,16 @@ android.accept_sdk_license = True
 #android.add_activites = com.example.ExampleActivity
 
 # (str) python-for-android branch to use, defaults to stable
-p4a.branch = develop
+# Pinned to a 3.12-based p4a: the develop branch now builds CPython 3.14,
+# whose private APIs moved out from under Cython 0.29's generated C++.
+# Observed on develop (python3.14):
+#   capnp.cpp:117194: no matching function for call to '_PyLong_AsByteArray'
+#       (3.14 added a 6th `with_exceptions` argument)
+#   capnp.cpp:113906: use of undeclared identifier '_PyGen_SetStopIterationValue'
+#   capnp.cpp:114876: use of undeclared identifier '_PyErr_FormatFromCause'
+# Shimming all of them is a losing game; the 3.12 branch keeps the ABI that
+# pycapnp/Cython expect. openpilot's own pyproject also pins <3.13.
+p4a.branch = v2024.01.21
 
 # (str) OUYA Console category. Should be one of GAME or APP
 # If you leave this blank, OUYA support will not be enabled
