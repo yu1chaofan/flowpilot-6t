@@ -6,12 +6,18 @@ import sh
 
 
 class CapnpRecipe(Recipe):
-    # v1.0.1 lacks CallContext::allowCancellation(), which both pycapnp
-    # v1.0.0 and v1.1.0 call in their .pyx:
-    #   error: no member named 'allowCancellation' in
-    #     'capnp::CallContext<capnp::DynamicStruct, capnp::DynamicStruct>'
-    # Match pycapnp v1.1.0 with the capnproto release it was written against.
-    version = 'b34ec28cceaf15b1082b74b50f03f770873c3636'  # v1.1.0
+    # capnproto >= 1.0 made CallContext::allowCancellation() a KJ_UNAVAILABLE
+    # stub -- calling it is a hard compile error ("As of Cap'n Proto 1.0,
+    # allowCancellation must be applied statically using an annotation"). It is
+    # a *live* method only up to and including 0.10.x, which is why pycapnp's
+    # generated bindings call it:
+    #
+    #   capnp/lib/capnp.cpp:44100:28: error: no member named 'allowCancellation'
+    #     in 'capnp::CallContext<capnp::DynamicStruct, capnp::DynamicStruct>'
+    #
+    # Use v0.10.4: the newest release where the call is valid (verified against
+    # capability.h in 0.9.1, 0.10.4, 1.1.0 and 1.3.0).
+    version = 'a91ec65323c2577732224d0cf6f5bf1e79d3a724'  # v0.10.4
     url = 'git+https://github.com/capnproto/capnproto.git'
     patches = ['path.patch']
 
