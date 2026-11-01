@@ -47,6 +47,32 @@ class PycapnpRecipe(CythonRecipe):
     # These args are appended verbatim by recipe.py:1194.
     cython_args = ['-3', '--cplus', '-I', '.']
 
+    def build_arch(self, arch):
+        """Install host prerequisites before touching the .pyx files.
+
+        CythonRecipe.build_arch() does call install_hostpython_prerequisites(),
+        but in the container that step silently no-ops: the log shows the
+        `pip install setuptools cython==0.29.37` line for *other* recipes and
+        none here, and the very next step dies with
+
+            File "setup.py", line 15, in <module>
+              from setuptools import setup, Extension
+            ModuleNotFoundError: No module named 'setuptools'
+
+        Installing them explicitly through the same hostpython pip makes the
+        dependency ordering unconditional instead of relying on recipe state.
+        """
+        from pythonforandroid.toolchain import shprint
+
+        # self._host_recipe is resolved by Recipe.__init__ (recipe.py:1021 uses
+        # the same handle); it is what install_hostpython_prerequisites() uses.
+        env = self.get_hostrecipe_env()
+        env.pop('PYTHONPATH', None)
+        # --upgrade keeps cython pinned even if a newer one leaked in earlier.
+        shprint(self._host_recipe.pip, 'install', '-q', '--upgrade',
+                'setuptools', 'wheel', 'cython==0.29.37', _env=env)
+        super().build_arch(arch)
+
     def cythonize_build(self, env, build_dir="."):
         """Cythonize only the real .pyx files.
 
