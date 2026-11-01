@@ -1,4 +1,4 @@
-from os.path import join
+from os.path import dirname, join
 
 from pythonforandroid.recipe import CythonRecipe, Recipe
 from pythonforandroid.logger import info
@@ -70,6 +70,17 @@ class PycapnpRecipe(CythonRecipe):
         capnp_dir = Recipe.get_recipe("capnp", self.ctx).get_build_dir(arch.arch)
         env['CXXFLAGS'] += ' -I{}/c++/src/'.format(capnp_dir)
         env['CXXFLAGS'] += ' -L{}/c++/.libs/'.format(capnp_dir)
+        # Cython's SetNameInClass utility calls _PyDict_SetItem_KnownHash on
+        # PY_VERSION_HEX >= 0x030500A1 (i.e. every Python we care about). That
+        # symbol is declared only in the *private* pycore_dict.h, which the p4a
+        # python3 recipe does not install, so the generated C++ fails with
+        #   error: use of undeclared identifier '_PyDict_SetItem_KnownHash'
+        # (this is not a Cython 3 symptom -- 0.29.33/0.29.37 emit it too, and
+        # p4a's python is 3.14 where the symbol is gone entirely).
+        # Force-include a shim that maps it onto the public PyDict_SetItem().
+        shim = join(dirname(__file__), 'cython_compat.h')
+        env['CXXFLAGS'] += ' -include {}'.format(shim)
+        env['CFLAGS'] += ' -include {}'.format(shim)
         return env
 
 
