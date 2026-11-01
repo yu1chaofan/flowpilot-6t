@@ -37,6 +37,11 @@ class CapnpRecipe(Recipe):
                 'CXX={}-clang++'.format(arch.target),
                 '--with-external-capnp',
                 '--without-fibers',
+                # Without this autoconf builds libcapnp/.a only, so .libs ends
+                # up with no lib*.so.* at all -- which is exactly what the
+                # explicit check below reported after the version bump.
+                '--enable-shared',
+                '--disable-static',
                 'CXXFLAGS=-fPIC -fPIE -shared -mno-outline-atomics',
                 'LIBS=-ldl',
                 _env=env)
