@@ -1,0 +1,22 @@
+--- a/numpy/distutils/command/build_clib.py
++++ b/numpy/distutils/command/build_clib.py
+@@ -103,8 +103,17 @@
+         self.compiler = new_compiler(compiler=self.compiler,
+                                      dry_run=self.dry_run,
+                                      force=self.force)
+-        self.compiler.customize(self.distribution,
+-                                need_cxx=self.have_cxx_sources())
++        # numpy.distutils patches customize() onto its own CCompiler class via
++        # replace_method(), but new_compiler() here returns setuptools'
++        # UnixCCompiler, which never got that patch:
++        #   AttributeError: 'UnixCCompiler' object has no attribute 'customize'
++        # Customization only sets include/library dirs and the target compiler
++        # name, all of which p4a already supplies through the recipe env, so a
++        # missing method is safe to skip.
++        _customize = getattr(self.compiler, 'customize', None)
++        if _customize is not None:
++            _customize(self.distribution,
++                       need_cxx=self.have_cxx_sources())
+ 
+         if self.warn_error:
+             self.compiler.compiler.append('-Werror')
