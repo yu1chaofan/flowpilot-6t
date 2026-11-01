@@ -79,10 +79,19 @@ class PycapnpRecipe(CythonRecipe):
         # Cython must stay 0.29.x: Cython 3 emits CPython private symbols
         # (_PyDict_SetItem_KnownHash, _PyInterpreterState_GetConfig) that p4a's
         # headers do not expose.
+        # Pin setuptools to exactly what p4a's own setuptools recipe installs
+        # (51.3.3). Anything newer loses distutils' compiler.cxx_compiler(),
+        # which numpy 1.22.3's bundled numpy.distutils still calls:
+        #   numpy/core/setup.py:702  bk_c.cxx_compiler()
+        #   AttributeError: 'UnixCCompiler' object has no attribute 'cxx_compiler'
+        # numpy builds from that same host site-packages, so the versions have
+        # to agree. 51.3.3 predates pyproject-only builds but pycapnp has a
+        # plain setup.py, which is all we need here.
         shprint(sh.Command(sys.executable), '-m', 'pip', 'install', '-q',
                 '--disable-pip-version-check', '--upgrade', '--ignore-installed',
                 '--target', host_site,
-                'setuptools<70', 'wheel', 'packaging', 'cython==0.29.37', _env=env)
+                'setuptools==51.3.3', 'wheel', 'packaging', 'cython==0.29.37',
+                _env=env)
         info("host deps prepared in {}".format(host_site))
 
     def build_arch(self, arch):
