@@ -15,8 +15,18 @@ build_flowy() {
 # Function to build with scons
 build_scons() {
   echo "Building with scons..."
+  ## scons/SConscript shell out to git to stamp the build; the docker bind mount
+  ## makes /work owned by a different uid than root, so git refuses with
+  ## "detected dubious ownership" and the build continues with a bogus version.
+  git config --global --add safe.directory /work 2>/dev/null || true
   ## Resolve the NDK buildozer actually downloaded (upstream hardcoded r25b; p4a develop now pulls r28c)
-  NDK_DIR=$(ls -d ~/.buildozer/android/platform/android-ndk-r* 2>/dev/null | sort -V | tail -1)
+  ## NOTE: the -d glob also matches the downloaded android-ndk-r28c-linux.zip,
+  ## and sort -V puts ".zip" after the directory, so tail -1 used to pick the
+  ## archive and every NDK call failed with "Not a directory". Filter to
+  ## directories that actually contain ndk-build before sorting.
+  NDK_DIR=$(for d in ~/.buildozer/android/platform/android-ndk-r*/; do
+             [ -x "${d}ndk-build" ] && echo "${d%/}"
+           done | sort -V | tail -1)
   NDK_TOOLCHAIN="$NDK_DIR/toolchains/llvm/prebuilt/linux-x86_64"
   echo "Using NDK: $NDK_DIR"
   ## libusb
