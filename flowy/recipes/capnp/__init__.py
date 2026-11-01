@@ -46,24 +46,31 @@ class CapnpRecipe(Recipe):
                 'LIBS=-ldl',
                 _env=env)
             shprint(sh.make, _env=env)
-            with current_directory(join(curdir, '.libs')):
-                # The version in the .so name tracks the capnproto release and
-                # changes with every bump. Globbing any lib*-<ver>.so keeps this
-                # working when `version` moves, instead of silently shipping no
-                # libraries (which is what happened when we went from v1.0.1 to
-                # v1.1.0 while this glob still said 1.0.1 -- pycapnp then failed
-                # with "no member named 'allowCancellation'", because it was
-                # compiling against nothing at all).
-                libs = sh.glob("lib*.so.*")
-                if not libs:
-                    raise RuntimeError(
-                        "capnp: no built libraries found in {}/.libs".format(curdir))
-                for lib in libs:
-                    shprint(sh.cp, '-a', lib, self.ctx.get_libs_dir(arch.arch))
-                    # Also copy the unversioned symlink target name, so p4a's
-                    # biglink step can resolve -lcapnp / -lkj.
-                    base = lib.split('.so.')[0] + '.so'
-                    shprint(sh.cp, '-a', lib, base, self.ctx.get_libs_dir(arch.arch))
+            # Copy the freshly linked shared objects out of .libs.
+            #
+            # Two traps here, both observed:
+            #  1. The version in the .so name tracks the capnproto release, so a
+            #     hardcoded 'lib*-1.0.1.so' glob silently matches nothing after
+            #     a version bump (pycapnp then compiles against stale headers and
+            #     fails with "no member named 'allowCancellation'").
+            #  2. `sh.glob()` resolves relative to the *process* cwd, not the
+            #     current_directory() context manager. Globbing "lib*.so.*"
+            #     inside current_directory('.libs') therefore looked in the wrong
+            #     place and reported "no built libraries" even though libtool had
+            #     just linked libkj.so/libcapnp.so there.
+            # Use an absolute pattern and skip the symlinks libtool leaves around.
+            libs_dir = join(curdir, '.libs')
+            candidates = sorted(sh.glob(join(libs_dir, 'lib*.so.*')))
+            real = [p for p in candidates if not sh.test('-L', p)]
+            if not real:
+                raise RuntimeError(
+                    "capnp: no built libraries found in {}".format(libs_dir))
+            for lib in real:
+                shprint(sh.cp, '-a', lib, self.ctx.get_libs_dir(arch.arch))
+                # Also publish the unversioned name so biglink can resolve
+                # -lcapnp / -lkj / -lkj-async.
+                base = lib.split('.so.')[0] + '.so'
+                shprint(sh.cp, '-a', lib, base, self.ctx.get_libs_dir(arch.arch))
 
 
 recipe = CapnpRecipe()
