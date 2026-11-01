@@ -41,8 +41,33 @@
 #endif
 
 #if PY_VERSION_HEX >= 0x030C0000
-/* Same story for the interpreter-config accessor used by some Cython 3 output. */
-#include <Python.h>
+/*
+ * Cython 3's module-init boilerplate calls _PyInterpreterState_GetConfig()
+ * to read the default string encoding:
+ *
+ *   PyConfig *config = (PyConfig *)_PyInterpreterState_GetConfig(
+ *       PyInterpreterState_Get());
+ *
+ * Also a private symbol (pycore_interp.h), also absent from p4a's headers.
+ * We return NULL: Cython then falls back to the UTF-8 default encoding, which
+ * is the behaviour we want for capnp. See the note at the definition below for
+ * why we do not read interp->config.
+ */
+#ifndef _PyInterpreterState_GetConfig
+/*
+ * Signature is `const PyConfig *_PyInterpreterState_GetConfig(PyInterpreterState *)`.
+ * We return NULL rather than poking at interp->config: the field is only
+ * visible through the cpython/ headers and its offset is not part of any
+ * stable ABI, so reading it would trade a compile error for silent memory
+ * corruption. NULL is an accepted input for Cython's use -- it then falls
+ * back to the UTF-8 default encoding, which is what we want anyway.
+ */
+static inline const PyConfig *_pycapnp_interp_get_config(PyInterpreterState *interp) {
+  (void)interp;
+  return NULL;
+}
+#define _PyInterpreterState_GetConfig(interp) _pycapnp_interp_get_config(interp)
+#endif
 #endif
 
 #endif /* PYCAPNP_CYTHON_COMPAT_H */
