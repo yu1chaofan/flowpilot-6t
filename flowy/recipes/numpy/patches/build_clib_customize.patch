@@ -1,6 +1,6 @@
 --- a/numpy/distutils/command/build_clib.py
 +++ b/numpy/distutils/command/build_clib.py
-@@ -103,8 +103,24 @@
+@@ -103,8 +103,22 @@
          self.compiler = new_compiler(compiler=self.compiler,
                                       dry_run=self.dry_run,
                                       force=self.force)
@@ -10,30 +10,29 @@
 +        # replace_method(), but new_compiler() here returns setuptools'
 +        # UnixCCompiler, which never got that patch:
 +        #   AttributeError: 'UnixCCompiler' object has no attribute 'customize'
-+        # Customization only sets include/library dirs and the target compiler
-+        # name, all of which p4a already supplies through the recipe env, so a
-+        # missing method is safe to skip.
++        # Skipping it entirely left the compiler without p4a's include/library
++        # dirs, so later stages failed with
++        #   fatal error: npy_math_private.h: No such file or directory
++        # Run distutils' own customize_compiler() instead -- that is the real
++        # work, and numpy's wrapper only adds bookkeeping on top.
 +        _customize = getattr(self.compiler, 'customize', None)
 +        if _customize is not None:
 +            _customize(self.distribution,
 +                       need_cxx=self.have_cxx_sources())
-+
-+        # Same story as customize() above: numpy.distutils attaches this via
-+        # replace_method on its own CCompiler, and setuptools' UnixCCompiler
-+        # does not have it.
-+        _customize_cmd = getattr(self.compiler, 'customize_cmd', None)
-+        if _customize_cmd is not None:
-+            _customize_cmd(self)
++        else:
++            from distutils.sysconfig import customize_compiler
++            customize_compiler(self.compiler)
  
          if self.warn_error:
              self.compiler.compiler.append('-Werror')
-@@ -112,10 +128,15 @@
+@@ -112,10 +126,16 @@
  
          libraries = self.libraries
          self.libraries = None
 -        self.compiler.customize_cmd(self)
-+        # Second customize_cmd call site in this method (line ~124); same
-+        # missing-method situation as above.
++        # numpy.distutils attaches customize_cmd via replace_method on its own
++        # CCompiler; setuptools' UnixCCompiler has no such method.
++        _customize_cmd = getattr(self.compiler, 'customize_cmd', None)
 +        if _customize_cmd is not None:
 +            _customize_cmd(self)
          self.libraries = libraries
@@ -45,14 +44,13 @@
  
          if not self.disable_optimization:
              dispatch_hpath = os.path.join("numpy", "distutils", "include", "npy_cpu_dispatch_config.h")
-@@ -374,7 +395,11 @@
+@@ -374,7 +394,10 @@
  
          if cxx_sources:
              log.info("compiling C++ sources")
 -            cxx_compiler = compiler.cxx_compiler()
-+            # setuptools' UnixCCompiler has no cxx_compiler(); fall back to the
-+            # same object, which still drives clang with the source's own
-+            # extension (.cpp) and therefore compiles as C++.
++            # Same missing-method situation; distutils selects the language
++            # from the source extension, so .cpp still compiles as C++.
 +            _cxx_factory = getattr(compiler, 'cxx_compiler', None)
 +            cxx_compiler = _cxx_factory() if _cxx_factory else compiler
              cxx_objects = cxx_compiler.compile(
