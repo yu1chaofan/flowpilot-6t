@@ -6,7 +6,13 @@ import sh
 
 
 class AcadosRecipe(Recipe):
-    version = 'v0.2.2'
+    # p4a's download() runs `git fetch --tags --depth 1` (recipe.py:270) with no
+    # refspec and then `git checkout <version>`. A shallow fetch does not bring
+    # down tag objects, so checking out the tag name fails with:
+    #   error: pathspec 'v0.2.2' did not match any file(s) known to git
+    # Pinning the commit SHA that v0.2.2 points at sidesteps this entirely --
+    # a SHA is fetched by --depth 1 and is always resolvable.
+    version = '8af9b0ad180940ef611884574a0b27a43504311d'
     url = 'git+https://github.com/acados/acados.git'
     # NDK r28c clang treats implicit function declarations as errors; qpOASES 3.1embedded
     # calls malloc() without including <stdlib.h>. MessageHandling.h is pulled in by every
@@ -45,35 +51,5 @@ class AcadosRecipe(Recipe):
             shprint(sh.make)
             
             sh.cp('-a', *self.generated_libraries, self.ctx.get_libs_dir(arch.arch))
-
-    def download_if_necessary(self):
-        """Fetch the pinned tag without tripping over shallow-clone checkout.
-
-        p4a's Recipe.fetch() does `git fetch --depth 1 origin <version>` and
-        then `git checkout <version>`. With --depth 1 the tag object itself is
-        not brought down, only FETCH_HEAD, so checkout fails with:
-
-            error: pathspec 'v0.2.2' did not match any file(s) known to git
-
-        Detaching onto FETCH_HEAD is equivalent (that IS the tag's commit) and
-        works regardless of clone depth.
-        """
-        import sh
-        from pythonforandroid.util import current_directory
-        from pythonforandroid.logger import info
-
-        super().download_if_necessary()
-
-        # download() has just run `git fetch --depth 1 origin v0.2.2`, which
-        # puts the commit in FETCH_HEAD but not the tag object. p4a then tries
-        # `git checkout v0.2.2` later and fails with "pathspec did not match".
-        # Detach onto FETCH_HEAD now, while we are still in the same repo.
-        build_dir = self.get_build_container_dir(None)
-        target = join(build_dir, self.name)
-        if exists(join(target, '.git')):
-            with current_directory(target):
-                info("acados: detaching onto FETCH_HEAD (shallow tag fetch)")
-                sh.git.checkout('--force', 'FETCH_HEAD')
-
 
 recipe = AcadosRecipe()
