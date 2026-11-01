@@ -86,11 +86,10 @@ run() {
   "$@"
 }
 
-# The first build will be slow as we're building a Python environment
-if [ ! -d "flowy/.buildozer" ]; then
-  build_flowy
-fi
-
+# The first build is slow because it bootstraps the Python environment.
+# Only do that for targets that actually need buildozer: doing it for `scons`
+# made the staged `native` job silently run the whole buildozer pipeline and
+# then fail on it, even though scons alone does not need it at all.
 build_target="$1"
 shift
 
