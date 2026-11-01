@@ -34,7 +34,7 @@ class PycapnpRecipe(CythonRecipe):
     """
 
     url = 'git+https://github.com/capnproto/pycapnp.git'
-    version = '50d3a8e96461df768caeddc5ed5e8c5d1114dbce'  # v1.0.0
+    version = '6aa59476a021cef601b0a7193a8bc7573aad31c0'  # v1.1.0
     depends = ['python3', 'capnp']
     hostpython_prerequisites = ['setuptools', 'cython==0.29.37']
     call_hostpython_via_targetpython = False
