@@ -38,6 +38,14 @@ class PycapnpRecipe(CythonRecipe):
     call_hostpython_via_targetpython = False
     patches = ['build.patch']
 
+    # pycapnp's capnp/lib/capnp.pyx is C++ throughout (it uses libc++, STL
+    # containers and `cdef extern from *` C++ helpers). p4a's cythonize_file()
+    # shells out to `cython <file>` with only self.cython_args appended and
+    # never passes --cplus, so the default C mode fails with:
+    #   capnp/lib/capnp.pyx:3924:17: Operation only allowed in c++
+    # These args are appended verbatim by recipe.py:1194.
+    cython_args = ['-3', '--cplus', '-I', '.']
+
     def get_recipe_env(self, arch, **kwargs):
         env = super().get_recipe_env(arch)
         capnp_dir = Recipe.get_recipe("capnp", self.ctx).get_build_dir(arch.arch)
