@@ -6,7 +6,7 @@ import sh
 
 
 class CapnpRecipe(Recipe):
-    version = 'v1.0.1'
+    version = 'c7f810a76ca88ff28613fa165927e0269255aab0'  # v1.0.1
     url = 'git+https://github.com/capnproto/capnproto.git'
     patches = ['path.patch']
 
