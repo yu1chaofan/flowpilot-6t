@@ -37,6 +37,7 @@ class NumpyCompatRecipe(NumpyRecipe):
         join(P4A_PATCH_DIR, 'add_libm_explicitly_to_build.patch'),
         join(P4A_PATCH_DIR, 'ranlib.patch'),
         join('patches', 'cxx_compiler.patch'),
+        join('patches', 'build_clib_customize.patch'),
     ]
 
 
