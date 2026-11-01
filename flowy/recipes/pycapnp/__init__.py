@@ -8,7 +8,7 @@ from pythonforandroid.recipe import PythonRecipe, Recipe
 
 class PycapnpRecipe(PythonRecipe):
     url = 'git+https://github.com/capnproto/pycapnp.git'
-    version = 'v2.0.0'
+    version = 'v1.0.0'
     depends = ['python3', 'capnp']
     hostpython_prerequisites = ['setuptools', 'cython==0.29.37']
     call_hostpython_via_targetpython = False
