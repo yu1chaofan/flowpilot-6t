@@ -1,0 +1,14 @@
+--- a/numpy/core/setup.py
++++ b/numpy/core/setup.py
+@@ -699,7 +699,10 @@
+                 # without doing big changes to config.
+                 # c tested first, compiler should be here
+                 bk_c = config_cmd.compiler
+-                config_cmd.compiler = bk_c.cxx_compiler()
++                # Newer setuptools distutils removed cxx_compiler(); fall back
++                # to the C compiler, which is enough to probe libm here.
++                cxx = getattr(bk_c, 'cxx_compiler', None)
++                config_cmd.compiler = cxx() if cxx else bk_c
+             st = config_cmd.try_link(test_code, lang=lang)
+             if not st:
+                 # rerun the failing command in verbose mode
